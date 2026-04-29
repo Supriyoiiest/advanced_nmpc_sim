@@ -1,0 +1,564 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Hybrid NMPC-COA Grinding Control</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <!-- Chosen Palette: Warm Stone & Slate with Teal Accents -->
+    <!-- Application Structure Plan: The application uses a tabbed dashboard structure to break down the highly technical 4-phase grinding control architecture into digestible, sequential modules. Phase 1 introduces the plant non-linearities. Phase 2 now includes a dynamic NMPC horizon simulator to visualize predictive optimal control. Phase 3 uses an animated scatter plot for the COA convergence. Phase 4 ties it all together into the real-time execution loop. -->
+    <!-- Visualization & Content Choices: Phase 2 (NMPC) -> Goal: Change & Relationships -> Interactive Line Chart with Tuning Sliders -> Justification: Demonstrates the core concept of NMPC (Receding Horizon Optimization) by allowing users to tune Q and R matrices and immediately see how the predicted optimal trajectory balances aggressive machining (temperature) against control effort, while strictly avoiding constraint violations. Uses Chart.js. -->
+    <!-- CONFIRMATION: NO SVG graphics used. NO Mermaid JS used. -->
+    <style>
+        .chart-container {
+            position: relative;
+            width: 100%;
+            max-width: 800px;
+            margin-left: auto;
+            margin-right: auto;
+            height: 40vh;
+            max-height: 400px;
+        }
+        @media (max-width: 768px) {
+            .chart-container {
+                height: 30vh;
+                max-height: 300px;
+            }
+        }
+        .nav-btn.active {
+            background-color: #0d9488;
+            color: white;
+            border-color: #0d9488;
+        }
+        .fade-in {
+            animation: fadeIn 0.4s ease-in forwards;
+        }
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(5px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        ::-webkit-scrollbar {
+            width: 8px;
+        }
+        ::-webkit-scrollbar-track {
+            background: #f5f5f4;
+        }
+        ::-webkit-scrollbar-thumb {
+            background: #d6d3d1;
+            border-radius: 4px;
+        }
+        ::-webkit-scrollbar-thumb:hover {
+            background: #a8a29e;
+        }
+    </style>
+</head>
+<body class="bg-stone-50 text-slate-800 font-sans antialiased overflow-x-hidden selection:bg-teal-200">
+
+<div class="flex flex-col md:flex-row min-h-screen">
+
+    <aside class="w-full md:w-72 bg-stone-100 border-r border-stone-200 p-6 flex flex-col shadow-sm z-10 shrink-0">
+        <div class="mb-8">
+            <h1 class="text-2xl font-bold text-slate-900 tracking-tight leading-tight">NMPC-COA<br><span class="text-teal-600 text-lg">Grinding Architecture</span></h1>
+            <p class="text-sm text-stone-500 mt-2">Interactive implementation guide for hybrid offline/online control.</p>
+        </div>
+
+        <nav class="flex flex-col gap-2 flex-grow">
+            <button onclick="nav('intro')" id="btn-intro" class="nav-btn active text-left px-4 py-3 rounded-lg border border-stone-200 bg-white hover:bg-stone-50 transition-colors font-medium text-sm flex items-center justify-between">
+                <span>📌 Overview</span>
+            </button>
+            <button onclick="nav('phase1')" id="btn-phase1" class="nav-btn text-left px-4 py-3 rounded-lg border border-stone-200 bg-white hover:bg-stone-50 transition-colors font-medium text-sm flex items-center justify-between">
+                <span>⚙️ Phase 1: Plant Model</span>
+            </button>
+            <button onclick="nav('phase2')" id="btn-phase2" class="nav-btn text-left px-4 py-3 rounded-lg border border-stone-200 bg-white hover:bg-stone-50 transition-colors font-medium text-sm flex items-center justify-between">
+                <span>💻 Phase 2: Offline NMPC</span>
+            </button>
+            <button onclick="nav('phase3')" id="btn-phase3" class="nav-btn text-left px-4 py-3 rounded-lg border border-stone-200 bg-white hover:bg-stone-50 transition-colors font-medium text-sm flex items-center justify-between">
+                <span>🐺 Phase 3: Online COA</span>
+            </button>
+            <button onclick="nav('phase4')" id="btn-phase4" class="nav-btn text-left px-4 py-3 rounded-lg border border-stone-200 bg-white hover:bg-stone-50 transition-colors font-medium text-sm flex items-center justify-between">
+                <span>🔄 Phase 4: Integration</span>
+            </button>
+        </nav>
+
+        <div class="mt-8 pt-6 border-t border-stone-200">
+            <p class="text-xs text-stone-400 font-semibold mb-1">References:</p>
+            <ul class="text-xs text-stone-400 space-y-1">
+                <li>• Malkin & Guo (2008). <i>Grinding Technology</i>.</li>
+                <li>• Ohtsuka (2004). <i>C/GMRES NMPC</i>. IEEE TAC.</li>
+                <li>• Pierezan (2018). <i>Coyote Optimization Algorithm</i>.</li>
+            </ul>
+        </div>
+    </aside>
+
+    <main class="flex-grow p-6 md:p-12 h-screen overflow-y-auto">
+        <div class="max-w-5xl mx-auto">
+
+            <!-- Overview Section -->
+            <section id="sec-intro" class="fade-in block">
+                <header class="mb-8 border-b border-stone-200 pb-6">
+                    <h2 class="text-3xl font-bold text-slate-800">Hybrid Control Architecture Overview</h2>
+                </header>
+                <div class="prose max-w-none text-slate-600 leading-relaxed space-y-6">
+                    <p class="text-lg">This application interactively visualizes a state-of-the-art dual-layer control architecture for industrial grinding operations. Grinding is a highly non-linear process requiring strict constraints to prevent workpiece thermal damage (burn) while maximizing wheel life and material removal.</p>
+                    
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-6 mt-8">
+                        <div class="bg-white p-6 rounded-xl border border-stone-200 shadow-sm">
+                            <div class="text-teal-600 text-3xl mb-3">⮧</div>
+                            <h3 class="text-xl font-semibold mb-2">Offline Supervisory Level</h3>
+                            <p class="text-sm">Utilizes Non-linear Model Predictive Control (NMPC) via CasADi and C/GMRES solver. It generates the baseline optimal trajectory (X_ref, U_ref) by predicting future plant states, ensuring all thermal and actuator constraints are respected over the entire machining pass.</p>
+                        </div>
+                        <div class="bg-white p-6 rounded-xl border border-stone-200 shadow-sm">
+                            <div class="text-teal-600 text-3xl mb-3">⮢</div>
+                            <h3 class="text-xl font-semibold mb-2">Online Real-Time Level</h3>
+                            <p class="text-sm">Employs the Coyote Optimization Algorithm (COA) to ingest the offline trajectory and act as an ultra-fast tracking controller. It reacts to real-time state estimates (via EKF and DAQ sensors) to reject immediate disturbances at the high-frequency CNC interpolation rate.</p>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Phase 1 Section -->
+            <section id="sec-phase1" class="fade-in hidden">
+                <header class="mb-8 border-b border-stone-200 pb-6">
+                    <h2 class="text-3xl font-bold text-slate-800">Phase 1: Mathematical Formulation</h2>
+                </header>
+                
+                <p class="text-slate-600 mb-8">Interact with the control inputs (u) below to observe how Workpiece Speed and Depth of Cut impact the critically constrained non-linear variables: Contact Temperature (θ_m) and Tangential Force (F_t).</p>
+
+                <div class="grid grid-cols-1 lg:grid-cols-3 gap-8">
+                    <div class="lg:col-span-1 space-y-6">
+                        <div class="bg-white p-5 rounded-xl border border-stone-200 shadow-sm">
+                            <h3 class="font-semibold text-slate-800 border-b border-stone-100 pb-2 mb-4">Control Inputs (u)</h3>
+                            
+                            <div class="mb-4">
+                                <label class="block text-xs font-bold text-stone-500 uppercase tracking-wider mb-1 flex justify-between">
+                                    <span>Workpiece Speed (v_w)</span>
+                                    <span id="vw-val" class="text-teal-600">50 mm/s</span>
+                                </label>
+                                <input type="range" id="vw-slider" min="10" max="100" value="50" class="w-full accent-teal-600" oninput="updatePlantModel()">
+                            </div>
+
+                            <div class="mb-4">
+                                <label class="block text-xs font-bold text-stone-500 uppercase tracking-wider mb-1 flex justify-between">
+                                    <span>Wheel Speed (v_s)</span>
+                                    <span id="vs-val" class="text-teal-600">30 m/s</span>
+                                </label>
+                                <input type="range" id="vs-slider" min="10" max="50" value="30" class="w-full accent-teal-600" oninput="updatePlantModel()">
+                            </div>
+
+                            <div class="mb-2">
+                                <label class="block text-xs font-bold text-stone-500 uppercase tracking-wider mb-1 flex justify-between">
+                                    <span>Depth of Cut (a_e)</span>
+                                    <span id="ae-val" class="text-teal-600">0.5 mm</span>
+                                </label>
+                                <input type="range" id="ae-slider" min="0.1" max="1.0" step="0.1" value="0.5" class="w-full accent-teal-600" oninput="updatePlantModel()">
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="lg:col-span-2 bg-white p-6 rounded-xl border border-stone-200 shadow-sm flex flex-col justify-center">
+                        <h3 class="font-semibold text-slate-800 text-center mb-4">Resulting Plant States (x)</h3>
+                        <div class="chart-container">
+                            <canvas id="plantChart"></canvas>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Phase 2 Section (Upgraded with Interactive NMPC) -->
+            <section id="sec-phase2" class="fade-in hidden">
+                <header class="mb-8 border-b border-stone-200 pb-6">
+                    <h2 class="text-3xl font-bold text-slate-800">Phase 2: Offline NMPC (CasADi + C/GMRES)</h2>
+                </header>
+
+                <p class="text-slate-600 mb-6">Non-linear Model Predictive Control predicts future states over a time horizon. By tuning the cost function matrices (<strong class="text-amber-600">Q</strong> for states, <strong class="text-teal-600">R</strong> for control effort), we shape the optimal trajectory. <strong>Adjust the sliders to see how the NMPC solver balances aggressive machining against the temperature constraint limits.</strong></p>
+
+                <div class="grid grid-cols-1 lg:grid-cols-3 gap-8 mb-8">
+                    <div class="lg:col-span-1 space-y-6">
+                        <div class="bg-white p-5 rounded-xl border border-stone-200 shadow-sm border-l-4 border-l-amber-500">
+                            <h4 class="font-bold text-slate-800 mb-2">State Penalty (Q matrix)</h4>
+                            <p class="text-xs text-slate-500 mb-4">Higher Q forces the system to reach the optimal machining target (higher removal rate) quickly, keeping temperature strictly below the burn limit constraint.</p>
+                            <label class="block text-xs font-bold text-stone-500 uppercase tracking-wider mb-1 flex justify-between">
+                                <span>Q Weight</span>
+                                <span id="q-val" class="text-amber-600">5.0</span>
+                            </label>
+                            <input type="range" id="q-slider" min="0.1" max="10.0" step="0.1" value="5.0" class="w-full accent-amber-500" oninput="updateNMPCTrajectory()">
+                        </div>
+
+                        <div class="bg-white p-5 rounded-xl border border-stone-200 shadow-sm border-l-4 border-l-teal-500">
+                            <h4 class="font-bold text-slate-800 mb-2">Control Penalty (R matrix)</h4>
+                            <p class="text-xs text-slate-500 mb-4">Higher R penalizes large, sudden changes in CNC actuators. This results in smoother, slower control effort but takes longer to reach target efficiency.</p>
+                            <label class="block text-xs font-bold text-stone-500 uppercase tracking-wider mb-1 flex justify-between">
+                                <span>R Weight</span>
+                                <span id="r-val" class="text-teal-600">2.0</span>
+                            </label>
+                            <input type="range" id="r-slider" min="0.1" max="10.0" step="0.1" value="2.0" class="w-full accent-teal-500" oninput="updateNMPCTrajectory()">
+                        </div>
+                    </div>
+
+                    <div class="lg:col-span-2 bg-white p-6 rounded-xl border border-stone-200 shadow-sm">
+                        <div class="flex justify-between items-center mb-2">
+                            <h3 class="font-semibold text-slate-800">Predicted Optimal Trajectory (Horizon: N=20)</h3>
+                        </div>
+                        <div class="chart-container relative">
+                            <canvas id="nmpcChart"></canvas>
+                        </div>
+                        <p class="text-center text-xs font-mono mt-4 text-stone-500 bg-stone-100 p-2 rounded">
+                            J_ocp = ∫ [ (x - x_ref)ᵀ<span class="text-amber-600 font-bold">Q</span>(x - x_ref) + uᵀ<span class="text-teal-600 font-bold">R</span>u ] dt
+                        </p>
+                    </div>
+                </div>
+
+                <div class="bg-slate-900 rounded-xl overflow-hidden shadow-lg border border-slate-700">
+                    <div class="bg-slate-800 px-4 py-2 flex justify-between items-center border-b border-slate-700">
+                        <span class="text-slate-300 text-xs font-mono">python / casadi_cgmres.py</span>
+                    </div>
+                    <pre class="p-4 text-xs md:text-sm text-teal-300 font-mono overflow-x-auto">
+# CasADi Formulation of the visual logic above
+H = L + ca.mtimes([lmbda.T, f]) # Hamiltonian
+dU = ca.jacobian(H, u)          # Optimality condition dH/du = 0
+
+# C/GMRES solves the KKT differential equation F(U, x, t) = 0
+# generating the X_ref and U_ref trajectories offline.</pre>
+                </div>
+            </section>
+
+            <!-- Phase 3 Section -->
+            <section id="sec-phase3" class="fade-in hidden">
+                <header class="mb-8 border-b border-stone-200 pb-6">
+                    <h2 class="text-3xl font-bold text-slate-800">Phase 3: Online Control (COA)</h2>
+                </header>
+
+                <p class="text-slate-600 mb-6">The Coyote Optimization Algorithm (COA) is a fast metaheuristic used here to track the NMPC reference trajectory while rejecting high-frequency disturbances. Click the button to visualize the pack converging on the optimal control action (Δu).</p>
+
+                <div class="bg-white p-6 rounded-xl border border-stone-200 shadow-sm mb-6">
+                    <div class="flex justify-between items-center mb-4">
+                        <h3 class="font-semibold text-slate-800">COA Convergence Simulation</h3>
+                        <button onclick="startCOASimulation()" class="px-4 py-2 bg-teal-600 text-white rounded hover:bg-teal-700 transition-colors text-sm font-medium">
+                            ▶ Run Convergence
+                        </button>
+                    </div>
+                    <div class="chart-container">
+                        <canvas id="coaChart"></canvas>
+                    </div>
+                    <p class="text-center text-xs font-mono mt-4 text-stone-500">soc_c^{p,t+1} = soc_c^{p,t} + r_1 * δ_1 + r_2 * δ_2</p>
+                </div>
+            </section>
+
+            <!-- Phase 4 Section -->
+            <section id="sec-phase4" class="fade-in hidden">
+                <header class="mb-8 border-b border-stone-200 pb-6">
+                    <h2 class="text-3xl font-bold text-slate-800">Phase 4: Real-Time Integration</h2>
+                </header>
+
+                <p class="text-slate-600 mb-8">This section illustrates the final execution loop running on the edge device or CNC controller, bringing together the offline trajectory data, live sensor feedback, and the COA online optimizer.</p>
+
+                <div class="relative bg-stone-100 p-8 rounded-xl border border-stone-200 overflow-hidden mb-8">
+                    <div class="flex flex-col md:flex-row gap-6 justify-center items-stretch text-center">
+                        <div class="flex-1 flex flex-col justify-center items-center bg-white border border-stone-300 rounded p-4 shadow-sm relative z-10">
+                            <span class="text-xl mb-2">📡</span>
+                            <span class="font-bold text-sm text-slate-700">1. Read DAQ</span>
+                            <span class="text-xs text-stone-500 mt-1">Acoustic Emission, Force</span>
+                        </div>
+                        <div class="hidden md:flex flex-col justify-center text-stone-400">➔</div>
+                        <div class="flex-1 flex flex-col justify-center items-center bg-white border border-stone-300 rounded p-4 shadow-sm relative z-10">
+                            <span class="text-xl mb-2">🧠</span>
+                            <span class="font-bold text-sm text-slate-700">2. EKF Update</span>
+                            <span class="text-xs text-stone-500 mt-1">Estimate States x(t)</span>
+                        </div>
+                        <div class="hidden md:flex flex-col justify-center text-stone-400">➔</div>
+                        <div class="flex-1 flex flex-col justify-center items-center bg-teal-50 border-2 border-teal-500 rounded p-4 shadow-sm relative z-10">
+                            <span class="text-xl mb-2">⚡</span>
+                            <span class="font-bold text-sm text-teal-800">3. Run COA</span>
+                            <span class="text-xs text-teal-600 mt-1">Track Offline NMPC Ref</span>
+                        </div>
+                        <div class="hidden md:flex flex-col justify-center text-stone-400">➔</div>
+                        <div class="flex-1 flex flex-col justify-center items-center bg-slate-800 text-white border border-slate-900 rounded p-4 shadow-sm relative z-10">
+                            <span class="text-xl mb-2">⚙️</span>
+                            <span class="font-bold text-sm">4. Actuate CNC</span>
+                            <span class="text-xs text-slate-300 mt-1">Apply Control Inputs</span>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+        </div>
+    </main>
+
+</div>
+
+<script>
+    // Navigation Logic
+    const sections = ['intro', 'phase1', 'phase2', 'phase3', 'phase4'];
+    function nav(targetId) {
+        sections.forEach(id => {
+            document.getElementById('sec-' + id).classList.add('hidden');
+            document.getElementById('sec-' + id).classList.remove('block');
+            document.getElementById('btn-' + id).classList.remove('active');
+            document.getElementById('btn-' + id).classList.replace('bg-teal-600', 'bg-white');
+            document.getElementById('btn-' + id).classList.replace('text-white', 'text-slate-800');
+        });
+        
+        const targetSec = document.getElementById('sec-' + targetId);
+        targetSec.classList.remove('hidden');
+        targetSec.classList.add('block');
+        
+        const targetBtn = document.getElementById('btn-' + targetId);
+        targetBtn.classList.add('active');
+        targetBtn.classList.replace('bg-white', 'bg-teal-600');
+        targetBtn.classList.replace('text-slate-800', 'text-white');
+
+        // Render charts dynamically if they are in the active section to prevent sizing issues
+        if(targetId === 'phase2' && nmpcChartInstance) nmpcChartInstance.resize();
+        if(targetId === 'phase3' && coaChartInstance) coaChartInstance.resize();
+    }
+
+    // --- PHASE 1: Plant Model ---
+    let plantChartInstance = null;
+    function initPlantChart() {
+        const ctx = document.getElementById('plantChart').getContext('2d');
+        plantChartInstance = new Chart(ctx, {
+            type: 'bar',
+            data: {
+                labels: ['Temperature (θ_m)', 'Tangential Force (F_t)'],
+                datasets: [{
+                    label: 'State Value',
+                    data: [50, 50],
+                    backgroundColor: ['#f59e0b', '#3b82f6'],
+                    borderWidth: 0,
+                    borderRadius: 4
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                scales: {
+                    y: { beginAtZero: true, max: 100, grid: { color: '#f5f5f4' } },
+                    x: { grid: { display: false } }
+                },
+                plugins: { legend: { display: false } }
+            }
+        });
+    }
+
+    function updatePlantModel() {
+        const vw = parseFloat(document.getElementById('vw-slider').value);
+        const vs = parseFloat(document.getElementById('vs-slider').value);
+        const ae = parseFloat(document.getElementById('ae-slider').value);
+
+        document.getElementById('vw-val').innerText = vw + ' mm/s';
+        document.getElementById('vs-val').innerText = vs + ' m/s';
+        document.getElementById('ae-val').innerText = ae.toFixed(1) + ' mm';
+
+        let mockFt = (ae * 50) + (vw * 0.2) - (vs * 0.1);
+        let mockTemp = (ae * 30) - (vw * 0.4) + 60;
+
+        mockFt = Math.max(10, Math.min(100, mockFt));
+        mockTemp = Math.max(10, Math.min(100, mockTemp));
+
+        if(plantChartInstance) {
+            plantChartInstance.data.datasets[0].data = [mockTemp, mockFt];
+            plantChartInstance.update();
+        }
+    }
+
+    // --- PHASE 2: NMPC Simulation ---
+    let nmpcChartInstance = null;
+    function initNMPCChart() {
+        const ctx = document.getElementById('nmpcChart').getContext('2d');
+        const labels = Array.from({length: 20}, (_, i) => `t+${i}`);
+        
+        nmpcChartInstance = new Chart(ctx, {
+            type: 'line',
+            data: {
+                labels: labels,
+                datasets: [
+                    {
+                        label: 'Max Temp Constraint (Limit)',
+                        data: Array(20).fill(85),
+                        borderColor: '#ef4444',
+                        borderWidth: 2,
+                        borderDash: [5, 5],
+                        pointRadius: 0,
+                        fill: false
+                    },
+                    {
+                        label: 'Predicted Temp (°C) [State]',
+                        data: [],
+                        borderColor: '#f59e0b',
+                        backgroundColor: 'rgba(245, 158, 11, 0.1)',
+                        borderWidth: 3,
+                        pointRadius: 2,
+                        fill: true,
+                        tension: 0.3
+                    },
+                    {
+                        label: 'Control Effort (Actuation) [u]',
+                        data: [],
+                        borderColor: '#0d9488',
+                        borderWidth: 2,
+                        pointRadius: 2,
+                        borderDash: [2, 2],
+                        fill: false,
+                        tension: 0.3
+                    }
+                ]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                interaction: { mode: 'index', intersect: false },
+                scales: {
+                    y: { beginAtZero: true, max: 100, grid: { color: '#f5f5f4' } },
+                    x: { grid: { display: false } }
+                },
+                plugins: {
+                    legend: { position: 'top', labels: { boxWidth: 12, font: {size: 11} } }
+                },
+                animation: { duration: 300 }
+            }
+        });
+        updateNMPCTrajectory();
+    }
+
+    function updateNMPCTrajectory() {
+        const q = parseFloat(document.getElementById('q-slider').value);
+        const r = parseFloat(document.getElementById('r-slider').value);
+        
+        document.getElementById('q-val').innerText = q.toFixed(1);
+        document.getElementById('r-val').innerText = r.toFixed(1);
+
+        let tempTraj = [];
+        let ctrlTraj = [];
+        let currentT = 20; // Ambient starting temp
+        const targetT = 80; // Ideal target temp for max material removal
+
+        // Heuristic function to visually approximate a Receding Horizon Optimization output
+        // balancing state error (Q) and control effort (R).
+        for (let i = 0; i < 20; i++) {
+            let error = targetT - currentT;
+            
+            // Proportional-like effort derived from Q/R ratio
+            let effort = (q / r) * error * 0.15; 
+            
+            // R heavily restricts maximum effort allowable per step
+            const maxEffort = 40 / Math.sqrt(r); 
+            if (effort > maxEffort) effort = maxEffort;
+            if (effort < 0) effort = 0;
+
+            ctrlTraj.push(effort);
+            
+            // Plant response: Temp increases based on effort, with a natural decay
+            currentT += (effort * 1.5) - ((currentT - 20) * 0.1);
+            
+            // Hard constraint simulation: NMPC would heavily penalize over 85
+            if (currentT > 84) currentT = 84 + (Math.random() * 0.5); 
+
+            tempTraj.push(currentT);
+        }
+
+        if (nmpcChartInstance) {
+            nmpcChartInstance.data.datasets[1].data = tempTraj;
+            nmpcChartInstance.data.datasets[2].data = ctrlTraj;
+            nmpcChartInstance.update();
+        }
+    }
+
+    // --- PHASE 3: COA Simulation ---
+    let coaChartInstance = null;
+    let coaInterval = null;
+    function initCOAChart() {
+        const ctx = document.getElementById('coaChart').getContext('2d');
+        const initialData = Array.from({length: 15}, () => ({
+            x: (Math.random() - 0.5) * 100,
+            y: (Math.random() - 0.5) * 100
+        }));
+
+        coaChartInstance = new Chart(ctx, {
+            type: 'scatter',
+            data: {
+                datasets: [
+                    {
+                        label: 'Optimal Reference (NMPC)',
+                        data: [{x: 0, y: 0}],
+                        backgroundColor: '#10b981',
+                        pointRadius: 8,
+                        pointStyle: 'crossRot',
+                        pointBorderWidth: 3
+                    },
+                    {
+                        label: 'Coyote Pack Positions (u)',
+                        data: initialData,
+                        backgroundColor: '#cbd5e1',
+                        borderColor: '#94a3b8',
+                        pointRadius: 5
+                    }
+                ]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                scales: {
+                    x: { min: -60, max: 60, title: { display: true, text: 'Feed Adjustment (Δvw)' }, grid: { color: '#f5f5f4' } },
+                    y: { min: -60, max: 60, title: { display: true, text: 'Depth Adjustment (Δae)' }, grid: { color: '#f5f5f4' } }
+                },
+                plugins: {
+                    tooltip: {
+                        callbacks: {
+                            label: function(context) { return `(${context.parsed.x.toFixed(1)}, ${context.parsed.y.toFixed(1)})`; }
+                        }
+                    }
+                },
+                animation: { duration: 200 }
+            }
+        });
+    }
+
+    function startCOASimulation() {
+        if(coaInterval) clearInterval(coaInterval);
+        
+        coaChartInstance.data.datasets[1].data = Array.from({length: 15}, () => ({
+            x: (Math.random() - 0.5) * 100,
+            y: (Math.random() - 0.5) * 100
+        }));
+        coaChartInstance.update();
+
+        let iterations = 0;
+        const maxIter = 20;
+
+        coaInterval = setInterval(() => {
+            if(iterations >= maxIter) {
+                clearInterval(coaInterval);
+                return;
+            }
+
+            const currentData = coaChartInstance.data.datasets[1].data;
+            const newData = currentData.map(pt => {
+                const stepX = (0 - pt.x) * 0.2 + (Math.random() - 0.5) * 10;
+                const stepY = (0 - pt.y) * 0.2 + (Math.random() - 0.5) * 10;
+                return { x: pt.x + stepX, y: pt.y + stepY };
+            });
+
+            coaChartInstance.data.datasets[1].data = newData;
+            
+            if (iterations > maxIter * 0.6) {
+                 coaChartInstance.data.datasets[1].backgroundColor = '#0d9488';
+            } else {
+                 coaChartInstance.data.datasets[1].backgroundColor = '#cbd5e1';
+            }
+            
+            coaChartInstance.update();
+            iterations++;
+        }, 300);
+    }
+
+    // Initialize all on load
+    window.onload = () => {
+        initPlantChart();
+        updatePlantModel();
+        initNMPCChart();
+        initCOAChart();
+    };
+</script>
+</body>
+</html>
