@@ -508,23 +508,23 @@
         }
 
         function injectFullSimDisturbance() {
-            sysDisturbance = 35; // +35 degrees instantly
+            sysDisturbance = 40; // Magnitude of the hard-spot thermal spike
         }
 
         function runFullSim() {
             if(activePage === 'fullsim') {
                 simTime++;
                 
-                // 1. Plant Physics Update (Slow climb to 84, plus noise and disturbances)
                 let currentT = simHistTemp[FULL_HIST_LEN - 1];
-                let targetT = 83; // Normal optimal setpoint
+                let targetT = 83; // Normal optimal setpoint determined by NMPC
                 
-                // COA rejects disturbance exponentially
-                if (sysDisturbance > 0) {
-                    sysDisturbance *= 0.9; 
-                    currentT += sysDisturbance * 0.1;
-                } else {
-                    currentT += (targetT - currentT) * 0.05 + (Math.random() - 0.5);
+                // 1. Nominal NMPC control: consistently pulls state towards the optimized target
+                currentT += (targetT - currentT) * 0.05 + (Math.random() - 0.5);
+
+                // 2. Disturbance injection: Immediate heat spike, mitigated exponentially by COA
+                if (sysDisturbance > 0.01) {
+                    currentT += sysDisturbance * 0.25; // Heat actively applied to the plant
+                    sysDisturbance *= 0.8; // COA acts to decay the forcing function
                 }
 
                 document.getElementById('simPlantTemp').innerText = currentT.toFixed(1);
@@ -532,11 +532,11 @@
                 simHistTemp.push(currentT);
                 simHistTemp.shift();
 
-                // 2. Build Dataset 1: Historical Data (Padded with nulls on right)
+                // Build Dataset 1: Historical Data (Padded with nulls on right)
                 let plantData = [...simHistTemp];
                 for(let i=0; i<FULL_HORIZON_LEN; i++) plantData.push(null);
 
-                // 3. Build Dataset 2: NMPC Horizon (Nulls on left, Prediction on right)
+                // Build Dataset 2: NMPC Horizon (Nulls on left, Prediction on right)
                 let nmpcData = Array(FULL_HIST_LEN - 1).fill(null);
                 
                 let predT = currentT;
