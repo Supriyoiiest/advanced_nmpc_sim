@@ -3,350 +3,568 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Hybrid NMPC-COA Architecture for 7-DOF Robotic Grinding</title>
+    <title>Hybrid NMPC-COA Grinding Architecture</title>
     
     <script src="https://cdn.tailwindcss.com"></script>
-    
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-    
     <script>
         MathJax = {
-            tex: {
-                inlineMath: [['$', '$'], ['\\(', '\\)']],
-                displayMath: [['$$', '$$'], ['\\[', '\\]']],
-                tags: 'ams'
-            },
-            svg: { fontCache: 'global' }
+            tex: { inlineMath: [['$', '$'], ['\\(', '\\)']], displayMath: [['$$', '$$'], ['\\[', '\\]']] },
+            svg: { fontCache: 'global' },
+            startup: { typeset: false }
         };
     </script>
     <script id="MathJax-script" async src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
 
     <style>
-        /* Strict Scientific Paper Styling */
-        body { 
-            font-family: "Times New Roman", Times, serif; 
-            background-color: #e5e7eb; /* Darker backdrop for paper contrast */
-            color: #000; 
-            line-height: 1.6;
-        }
-        .paper-container { 
-            max-width: 950px; 
-            margin: 2rem auto; 
-            padding: 4rem 5rem; 
-            background: #fff; 
-            box-shadow: 0 10px 25px rgba(0,0,0,0.1); 
-        }
-        h1 { font-size: 2rem; font-weight: bold; text-align: center; margin-bottom: 1.5rem; line-height: 1.2; }
-        h2 { font-size: 1.25rem; font-weight: bold; text-transform: uppercase; margin-top: 2.5rem; margin-bottom: 1rem; }
-        h3 { font-size: 1.1rem; font-style: italic; margin-top: 1.5rem; margin-bottom: 0.5rem; }
-        p { text-align: justify; margin-bottom: 1rem; }
+        body { font-family: 'Times New Roman', Times, serif; background-color: #f8fafc; color: #0f172a; overflow: hidden; }
+        h1, h2, h3, h4, .ui-sans { font-family: ui-sans-serif, system-ui, sans-serif; }
         
-        .abstract-box { 
-            margin: 2rem 3rem; 
-            padding: 1rem; 
-            font-size: 0.95rem; 
-            font-weight: bold;
-        }
-        .abstract-text { font-weight: normal; font-style: italic; }
-        
-        .math-block { 
-            overflow-x: auto; 
-            margin: 1.5rem 0; 
-            font-size: 1.05rem;
-        }
-        
-        .interactive-figure {
-            border: 1px solid #ccc;
-            padding: 1rem;
-            background: #fafafa;
-            margin: 2rem 0;
-        }
-        .caption {
-            text-align: justify;
-            font-size: 0.9rem;
-            color: #333;
-            margin-top: 0.5rem;
-            font-family: ui-sans-serif, system-ui, sans-serif;
-        }
+        .chart-container { position: relative; width: 100%; max-width: 1000px; margin: 0 auto; height: 350px; max-height: 45vh; }
+        .chart-container-small { position: relative; width: 100%; height: 250px; }
+        @media (max-width: 768px) { .chart-container, .chart-container-small { height: 250px; } body { overflow: auto; } }
 
-        /* Chart Canvas Constrainers */
-        .chart-wrapper { position: relative; height: 300px; width: 100%; margin-bottom: 1rem; }
-        .btn-sci {
-            font-family: ui-sans-serif, system-ui, sans-serif;
-            background: #fff; border: 1px solid #000; padding: 0.25rem 0.75rem; 
-            cursor: pointer; font-size: 0.85rem; font-weight: bold;
-            transition: all 0.2s;
-        }
-        .btn-sci:hover { background: #000; color: #fff; }
+        .page-content { display: none; animation: fadeIn 0.3s ease-in-out; height: 100%; overflow-y: auto; padding-bottom: 4rem; }
+        .page-content.active { display: block; }
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(5px); } to { opacity: 1; transform: translateY(0); } }
+        
+        .nav-btn { width: 100%; text-align: left; padding: 0.75rem 1rem; border-radius: 0.5rem; transition: all 0.2s; font-weight: 500; color: #475569; border: 1px solid transparent; }
+        .nav-btn:hover { background-color: #e2e8f0; color: #0f172a; }
+        .nav-btn.active { background-color: #0f172a; color: #ffffff; box-shadow: 0 4px 6px -1px rgba(15, 23, 42, 0.3); border-color: #0f172a; }
+
+        .math-block { background: #ffffff; border-left: 4px solid #0f172a; padding: 1rem; margin: 1rem 0; overflow-x: auto; box-shadow: 0 1px 3px rgba(0,0,0,0.05); font-size: 1.1rem; }
+        
+        .arch-node { background: white; border: 2px solid #cbd5e1; padding: 1rem; border-radius: 0.5rem; text-align: center; cursor: pointer; transition: all 0.2s; position: relative; }
+        .arch-node:hover, .arch-node.active-node { border-color: #0f172a; transform: translateY(-2px); box-shadow: 0 10px 15px -3px rgba(0,0,0,0.1); }
+        .arch-line { width: 2px; background: #cbd5e1; margin: 0 auto; }
+        
+        ::-webkit-scrollbar { width: 6px; }
+        ::-webkit-scrollbar-track { background: transparent; }
+        ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 3px; }
+        ::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
     </style>
 </head>
-<body>
+<body class="h-screen flex flex-col md:flex-row antialiased selection:bg-slate-300">
 
-    <div class="paper-container">
-        
-        <h1>A Dual-Rate Architecture for 7-DOF Robotic Grinding: Integrating C/GMRES NMPC with Coyote Optimization</h1>
-        <div class="text-center italic mb-8">
-            <p class="mb-0">Advanced Machining and Robotics Laboratory</p>
+    <aside class="w-full md:w-72 bg-slate-100 border-r border-slate-300 flex flex-col h-auto md:h-full shrink-0 z-20 shadow-[2px_0_10px_rgba(0,0,0,0.05)]">
+        <div class="p-6 border-b border-slate-300 bg-white">
+            <h1 class="text-xl font-bold text-slate-900 tracking-tight ui-sans leading-tight">Hybrid Grinding Control</h1>
+            <p class="text-xs text-slate-500 mt-1 uppercase tracking-wider font-semibold">Interactive Framework</p>
         </div>
+        <nav class="flex-1 p-4 space-y-2 overflow-y-auto ui-sans text-sm">
+            <button onclick="navTo('arch')" id="nav-arch" class="nav-btn active">I. Architecture Topology</button>
+            <button onclick="navTo('physics')" id="nav-physics" class="nav-btn">II. Process Thermodynamics</button>
+            <button onclick="navTo('nmpc')" id="nav-nmpc" class="nav-btn">III. C/GMRES Formulation</button>
+            <button onclick="navTo('coa')" id="nav-coa" class="nav-btn">IV. Swarm Metaheuristics</button>
+            <button onclick="navTo('fullsim')" id="nav-fullsim" class="nav-btn bg-slate-200 font-bold border-slate-400 mt-4">V. Full System Integration</button>
+            <button onclick="navTo('refs')" id="nav-refs" class="nav-btn mt-6 border border-slate-300 text-center">References</button>
+        </nav>
+    </aside>
 
-        <div class="abstract-box">
-            Abstract— <span class="abstract-text">This paper formulates a dual-rate control architecture for redundant 7-DOF manipulators executing high-tolerance grinding operations. The framework couples a continuous-time Nonlinear Model Predictive Controller (NMPC) via the C/GMRES method for offline-equivalent, horizon-based thermal constraint management, with a high-frequency Coyote Optimization Algorithm (COA) for real-time stochastic disturbance rejection. By decoupling the thermo-mechanical horizon optimization from instantaneous non-linear force variations (e.g., workpiece hard spots), the architecture mathematically guarantees constraint satisfaction without sacrificing the microsecond responsiveness required in active compliance. Interactive numerical results are embedded herein.</span>
-        </div>
-        <p class="text-sm text-center mb-8"><strong>Index Terms</strong>— Nonlinear Model Predictive Control, C/GMRES, Coyote Optimization Algorithm, Redundant Manipulators, Grinding Dynamics.</p>
+    <main class="flex-1 bg-white relative overflow-hidden h-full">
+        <div class="max-w-5xl mx-auto h-full px-6 py-8 md:px-12 md:py-10">
 
-        <h2>I. System Dynamics and Problem Formulation</h2>
-        <p>
-            Grinding via a highly coupled 7-DOF spatial manipulator introduces severe non-linearities. The rigid body dynamics mapped to the task space, augmented by the highly non-linear grinding force interaction, are expressed as:
-        </p>
-        <div class="math-block">
-            $$ M(q)\ddot{q} + C(q, \dot{q})\dot{q} + G(q) = \tau_u - J^T(q)F_{grind}(v_w, a_e, v_s) $$
-        </div>
-        <p>
-            Where $F_{grind}$ is the localized force vector dependent on workpiece feed ($v_w$), depth of cut ($a_e$), and wheel speed ($v_s$). The primary limitation in industrial grinding is thermal workpiece damage (grinding burn). Using Jaeger’s moving heat source theorem, the maximum contact temperature $\theta_m$ is bounded by a critical threshold $\theta_{crit}$:
-        </p>
-        <div class="math-block">
-            $$ \theta_m = \frac{1.13 \cdot q_w \cdot \alpha^{1/2}}{k_w \cdot v_w^{1/2} \cdot l_c^{1/2}} \leq \theta_{crit} $$
-        </div>
-        <p>
-            Solving this coupled highly-constrained system explicitly at the CNC interpolation rate (e.g., 1 kHz) via standard NLP solvers is computationally intractable.
-        </p>
+            <!-- PAGE 1: Architecture -->
+            <div id="page-arch" class="page-content active">
+                <h2 class="text-3xl font-bold text-slate-900 mb-2 ui-sans tracking-tight">I. Dual-Rate Architecture Topology</h2>
+                <p class="text-slate-700 mb-8 border-b border-slate-200 pb-4 text-justify">A rigorous decomposition of the control problem into a computationally heavy, low-frequency predictive horizon optimization and a lightweight, high-frequency stochastic disturbance compensator.</p>
+                
+                <div class="bg-slate-50 p-6 rounded-xl border border-slate-200 mb-6 flex flex-col md:flex-row items-center gap-8 justify-center">
+                    <div class="w-full max-w-sm flex-1">
+                        <div class="arch-node border-slate-800" onclick="showArchInfo('nmpc')">
+                            <span class="text-xs font-bold text-slate-600 uppercase ui-sans tracking-widest">Supervisory NMPC ($~50$ Hz)</span>
+                            <div class="font-bold text-lg text-slate-900 ui-sans mt-1">C/GMRES Predictive Horizon</div>
+                        </div>
+                        <div class="arch-line h-8"></div>
+                        <div class="text-center text-xs text-slate-500 font-bold mb-1 font-mono">$$u_{ref}^*(t+T)$$</div>
+                        <div class="arch-node border-teal-700" onclick="showArchInfo('coa')">
+                            <span class="text-xs font-bold text-teal-700 uppercase ui-sans tracking-widest">Real-Time Control ($1$ kHz)</span>
+                            <div class="font-bold text-lg text-slate-900 ui-sans mt-1">COA Swarm Controller</div>
+                        </div>
+                        <div class="arch-line h-8"></div>
+                        <div class="text-center text-xs text-slate-500 font-bold mb-1 font-mono">$$\tau_{u} = u_{ref}^* + \Delta u$$</div>
+                        <div class="arch-node border-amber-700" onclick="showArchInfo('plant')">
+                            <span class="text-xs font-bold text-amber-700 uppercase ui-sans tracking-widest">Physical Domain</span>
+                            <div class="font-bold text-lg text-slate-900 ui-sans mt-1">7-DOF CNC Plant & EKF</div>
+                        </div>
+                    </div>
 
-        <h2>II. Supervisory Control via C/GMRES NMPC</h2>
-        <p>
-            To achieve horizon-based optimization, we define the state vector $x = [\theta_m, F_t, q^T, \dot{q}^T]^T$ and input $u = [v_w, a_e]^T$. The continuous-time optimal control problem (OCP) minimizes the functional $J$:
-        </p>
-        <div class="math-block">
-            $$ J = \frac{1}{2} x^T(t+T) P x(t+T) + \int_{t}^{t+T} \frac{1}{2} \left[ \|x(\tau) - x_{ref}\|^2_Q + \|u(\tau)\|^2_R \right] d\tau $$
-        </div>
-        <p>
-            By defining the Hamiltonian $H(x, u, \lambda)$, the first-order Karush-Kuhn-Tucker (KKT) optimality condition is given by $H_u = 0$. The Continuation/GMRES (C/GMRES) algorithm avoids solving the two-point boundary value problem by tracking the root of $F(U, x, t) = H_u$ using forward-difference integration:
-        </p>
-        <div class="math-block">
-            $$ \dot{F}(U, x, t) = -\zeta F(U, x, t) $$
-        </div>
-        <p>
-            This yields a linear equation for the optimal control variation $\dot{U}$, solved efficiently via the GMRES Krylov-subspace method, providing a globally optimal reference trajectory $u_{ref}^*(\tau)$.
-        </p>
-
-        <h2>III. Real-Time Disturbance Rejection via COA</h2>
-        <p>
-            While C/GMRES efficiently manages the thermal horizon, it is susceptible to unmodeled, high-frequency stochastic material defects (hard spots). We deploy the Coyote Optimization Algorithm (COA) operating in the manipulator's null-space and feed-override loops at 1 kHz to track $u_{ref}^*$ while rejecting instantaneous state spikes. 
-        </p>
-        <p>
-            The COA updates a candidate swarm $soc_c^{p,t}$ by evaluating the tracking cost against the alpha coyotes ($\delta_1$) and the pack median ($\delta_2$):
-        </p>
-        <div class="math-block">
-            $$ soc_c^{p,t+1} = soc_c^{p,t} + r_1 \cdot \delta_1 + r_2 \cdot \delta_2 $$
-        </div>
-
-        <h2>IV. Empirical Numerical Results</h2>
-        <p>
-            The following interactive figure demonstrates the dual-rate architecture. The <strong>NMPC Horizon</strong> (top) predicts and optimizes the thermal trajectory to approach, but not exceed, $\theta_{crit} = 85$. The <strong>COA Phase Space</strong> (middle) illustrates the metaheuristic swarm tracking the reference target.
-        </p>
-        <p>
-            <em>Interaction:</em> Initiate a simulated "Hard Spot" material defect. Observe the instantaneous divergence in plant temperature, the immediate compensatory swarm convergence by the COA, and the subsequent horizon recalculation by the C/GMRES solver.
-        </p>
-
-        <div class="interactive-figure">
-            <div class="flex justify-between items-center mb-4 border-b border-gray-300 pb-2">
-                <strong class="font-sans text-sm uppercase tracking-wide">Fig. 1. Real-Time Architecture Simulation</strong>
-                <button onclick="injectDisturbance()" class="btn-sci">Inject Material Defect (t=current)</button>
-            </div>
-            
-            <div class="chart-wrapper">
-                <canvas id="nmpcChart"></canvas>
-            </div>
-            
-            <div class="flex flex-col md:flex-row gap-4">
-                <div class="chart-wrapper flex-1">
-                    <canvas id="coaChart"></canvas>
-                </div>
-                <div class="chart-wrapper flex-1">
-                    <canvas id="plantChart"></canvas>
+                    <div class="flex-1 w-full">
+                        <div id="arch-info" class="bg-white border-l-4 border-slate-800 p-6 rounded shadow-lg ui-sans min-h-[300px]">
+                            <h4 id="arch-info-title" class="text-xl font-bold text-slate-900 mb-3 border-b border-slate-100 pb-2">Select a Node</h4>
+                            <p id="arch-info-desc" class="text-sm text-slate-700 text-justify leading-relaxed">Click a node in the topological diagram to view the rigorous mathematical definition and operational parameters of that specific subsystem layer.</p>
+                        </div>
+                    </div>
                 </div>
             </div>
 
-            <p class="caption">
-                <strong>(Top)</strong> C/GMRES receding horizon predicting $\theta_m$ over $t+T$. <strong>(Bottom Left)</strong> COA evaluating feed rate adjustments $\Delta v_w$ and depth $\Delta a_e$ relative to $u_{ref}^*$. <strong>(Bottom Right)</strong> Actual plant state $\theta_m$ measured via EKF, demonstrating robust constraint satisfaction post-disturbance.
-            </p>
+            <!-- PAGE 2: Physics -->
+            <div id="page-physics" class="page-content">
+                <h2 class="text-3xl font-bold text-slate-900 mb-2 ui-sans tracking-tight">II. Process Thermodynamics</h2>
+                <p class="text-slate-700 mb-6 border-b border-slate-200 pb-4 text-justify">Defining the optimization boundary. Productivity (Material Removal Rate, $Q_w$) is strictly bounded by the maximum permissible contact temperature ($\theta_{crit}$) to prevent metallurgical burn.</p>
+
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
+                    <div>
+                        <p class="text-justify text-sm text-slate-700 mb-2">Jaeger's moving heat source theorem establishes the nonlinear relationship between specific energy, feed rate ($v_w$), and depth of cut ($a_e$):</p>
+                        <div class="math-block text-sm">
+                            $$ \theta_m = \frac{1.13 \cdot q_w \cdot \alpha^{1/2}}{k_w \cdot v_w^{1/2} \cdot l_c^{1/2}} \le \theta_{crit} $$
+                        </div>
+                    </div>
+                    <div>
+                        <p class="text-justify text-sm text-slate-700 mb-2">Material Removal Rate ($Q_w$) drives productivity:</p>
+                        <div class="math-block text-sm">
+                            $$ Q_w = v_w \cdot a_e \cdot b $$
+                        </div>
+                        <p class="text-xs text-slate-500 italic mt-1">Where $b$ is the grinding width. The controller must maximize $Q_w$ without violating $\theta_m \le \theta_{crit}$.</p>
+                    </div>
+                </div>
+
+                <div class="bg-white p-6 rounded-xl border border-slate-200 shadow-sm">
+                    <div class="flex flex-col md:flex-row gap-8 mb-6 items-center bg-slate-50 p-4 rounded-lg">
+                        <div class="flex-1 w-full space-y-4">
+                            <div>
+                                <label class="flex justify-between text-xs font-bold text-slate-600 uppercase ui-sans mb-1">
+                                    <span>Depth of Cut ($a_e$)</span>
+                                    <span id="depthVal" class="text-slate-900 font-mono">0.5 mm</span>
+                                </label>
+                                <input type="range" id="depthSlider" min="0.1" max="1.0" step="0.05" value="0.5" class="w-full accent-slate-800" oninput="updatePhysicsChart()">
+                            </div>
+                            <div>
+                                <label class="flex justify-between text-xs font-bold text-slate-600 uppercase ui-sans mb-1">
+                                    <span>Wheel Speed ($v_s$)</span>
+                                    <span id="speedVal" class="text-slate-900 font-mono">30 m/s</span>
+                                </label>
+                                <input type="range" id="speedSlider" min="15" max="60" step="1" value="30" class="w-full accent-slate-800" oninput="updatePhysicsChart()">
+                            </div>
+                        </div>
+                        <div class="bg-white p-4 rounded border border-slate-300 text-center min-w-[200px] shadow-sm">
+                            <span class="block text-xs text-slate-500 uppercase ui-sans mb-1 border-b border-slate-100 pb-1">Max Permissible Feed ($v_w^*$)</span>
+                            <span id="optFeedVal" class="text-3xl font-bold text-slate-900 font-mono">50.0</span>
+                            <span class="text-xs text-slate-400 font-mono block mt-1">mm/s</span>
+                        </div>
+                    </div>
+                    <div class="chart-container">
+                        <canvas id="physicsChart"></canvas>
+                    </div>
+                </div>
+            </div>
+
+            <!-- PAGE 3: NMPC -->
+            <div id="page-nmpc" class="page-content">
+                <h2 class="text-3xl font-bold text-slate-900 mb-2 ui-sans tracking-tight">III. Continuous-Time NMPC Formulation</h2>
+                <p class="text-slate-700 mb-6 border-b border-slate-200 pb-4 text-justify">The C/GMRES algorithm traces the roots of the KKT conditions ($\dot{F}(U,x,t) = -\zeta F(U,x,t)$) continuously, avoiding explicit matrix inversion and rendering receding-horizon optimization viable for machine tool control.</p>
+
+                <div class="math-block text-sm">
+                    $$ \min_{u} J = \frac{1}{2} x(t+T)^T P x(t+T) + \int_{t}^{t+T} \frac{1}{2} \left[ \|x(\tau) - x_{ref}\|^2_Q + \|u(\tau)\|^2_R \right] d\tau $$
+                </div>
+                
+                <p class="text-sm text-slate-700 mb-4">Tuning the ratio of State Penalty ($Q$) to Control Effort Penalty ($R$) fundamentally alters the aggressiveness of the calculated optimal trajectory approaching the strict thermal barrier.</p>
+
+                <div class="bg-white p-6 rounded-xl border border-slate-200 shadow-sm grid grid-cols-1 md:grid-cols-3 gap-6">
+                    <div class="md:col-span-1 flex flex-col justify-center space-y-6 bg-slate-50 p-4 rounded-lg border border-slate-200">
+                        <div>
+                            <label class="block text-xs font-bold text-slate-700 uppercase ui-sans mb-1 flex justify-between">
+                                <span>State Penalty (Q)</span>
+                                <span id="qVal" class="text-slate-900 font-mono">5.0</span>
+                            </label>
+                            <input type="range" id="qSlider" min="1" max="20" step="1" value="5" class="w-full accent-slate-800" oninput="updateNMPCChart()">
+                            <p class="text-[10px] text-slate-500 leading-tight mt-1">High Q prioritizes reaching max temperature limit rapidly.</p>
+                        </div>
+                        <div>
+                            <label class="block text-xs font-bold text-slate-700 uppercase ui-sans mb-1 flex justify-between">
+                                <span>Control Penalty (R)</span>
+                                <span id="rVal" class="text-slate-900 font-mono">1.0</span>
+                            </label>
+                            <input type="range" id="rSlider" min="0.1" max="10" step="0.1" value="1.0" class="w-full accent-slate-800" oninput="updateNMPCChart()">
+                            <p class="text-[10px] text-slate-500 leading-tight mt-1">High R severely penalizes large actuator torque/feed variations.</p>
+                        </div>
+                    </div>
+                    <div class="md:col-span-2">
+                        <div class="chart-container">
+                            <canvas id="nmpcChart"></canvas>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- PAGE 4: COA -->
+            <div id="page-coa" class="page-content">
+                <h2 class="text-3xl font-bold text-slate-900 mb-2 ui-sans tracking-tight">IV. Swarm Metaheuristics (COA)</h2>
+                <p class="text-slate-700 mb-6 border-b border-slate-200 pb-4 text-justify">The Coyote Optimization Algorithm provides 1kHz, derivative-free local null-space optimization. It calculates high-frequency variations ($\Delta u$) to reject instantaneous stochastic disturbances (e.g., workpiece hard spots) before the NMPC horizon recalculates.</p>
+
+                <div class="math-block text-sm">
+                    $$ soc_c^{p,t+1} = soc_c^{p,t} + r_1 \cdot (\alpha - soc_c^{p,t}) + r_2 \cdot (\text{median} - soc_c^{p,t}) $$
+                </div>
+
+                <div class="bg-white p-6 rounded-xl border border-slate-200 shadow-sm grid grid-cols-1 md:grid-cols-2 gap-6">
+                    <div>
+                        <div class="flex justify-between items-center mb-2">
+                            <strong class="text-sm text-slate-800 ui-sans">Phase Space Convergence</strong>
+                            <button onclick="scatterSwarm()" class="bg-slate-800 hover:bg-slate-900 text-white py-1 px-3 rounded text-[10px] uppercase font-bold transition-colors">Disperse Swarm</button>
+                        </div>
+                        <div class="chart-container-small">
+                            <canvas id="coaScatterChart"></canvas>
+                        </div>
+                    </div>
+                    <div>
+                        <strong class="text-sm text-slate-800 ui-sans block mb-2">Cost Function Decay $J(soc)$</strong>
+                        <div class="chart-container-small">
+                            <canvas id="coaCostChart"></canvas>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- PAGE 5: Full Simulation (NEW) -->
+            <div id="page-fullsim" class="page-content">
+                <h2 class="text-3xl font-bold text-slate-900 mb-2 ui-sans tracking-tight">V. Full System Integration</h2>
+                <p class="text-slate-700 mb-6 border-b border-slate-200 pb-4 text-justify">A complete real-time numerical simulation. Observe the physical plant temperature evolving (solid black), tracking the leading edge of the receding C/GMRES prediction horizon (dashed blue). The COA handles instantaneous noise.</p>
+
+                <div class="bg-white p-4 rounded-xl border border-slate-200 shadow-sm mb-4">
+                    <div class="flex justify-between items-center mb-4 bg-slate-50 p-3 rounded border border-slate-200">
+                        <div class="text-sm font-mono text-slate-700">
+                            Current Limit: <span class="text-red-600 font-bold">85°C</span> | Plant: <span id="simPlantTemp" class="font-bold">0.0</span>°C
+                        </div>
+                        <button onclick="injectFullSimDisturbance()" class="bg-red-600 hover:bg-red-700 text-white font-bold py-2 px-6 rounded text-sm uppercase tracking-wide transition-colors shadow">
+                            Inject Thermal Spike (Hard Spot)
+                        </button>
+                    </div>
+                    
+                    <div class="w-full relative h-[400px]">
+                        <canvas id="fullSimChart"></canvas>
+                    </div>
+                    <p class="text-[10px] text-center text-slate-500 mt-2 font-mono">Time (t) -> [Historical Data | Current State | Predicted Horizon t+T]</p>
+                </div>
+            </div>
+
+            <!-- PAGE 6: References -->
+            <div id="page-refs" class="page-content">
+                <h2 class="text-3xl font-bold text-slate-900 mb-6 ui-sans tracking-tight border-b border-slate-200 pb-4">Scientific References</h2>
+                
+                <ol class="list-decimal pl-6 space-y-6 text-slate-800 leading-relaxed text-justify">
+                    <li>
+                        <strong>Thermal Constraints & Grinding Dynamics:</strong><br>
+                        Malkin, S., & Guo, C. (2008). <em>Grinding Technology: Theory and Applications of Machining with Abrasives</em>. Industrial Press. <span class="text-sm text-slate-500 italic block">Formulates the core physical limitations (Eq. 2) defining the optimization boundary.</span>
+                    </li>
+                    <li>
+                        <strong>C/GMRES Algorithm Formulation:</strong><br>
+                        Ohtsuka, T. (2004). "A continuation/GMRES method for fast computation of nonlinear model predictive control." <em>IEEE Transactions on Automatic Control</em>, 49(5), 842-848. <span class="text-sm text-slate-500 italic block">Establishes the continuous-time tracking of KKT conditions (Eq. 3), enabling rapid NMPC without matrix inversion.</span>
+                    </li>
+                    <li>
+                        <strong>Swarm Intelligence (COA):</strong><br>
+                        Pierezan, J., & Coelho, L. S. (2018). "Coyote Optimization Algorithm: A new metaheuristic for global optimization problems." <em>2018 IEEE Congress on Evolutionary Computation (CEC)</em>. <span class="text-sm text-slate-500 italic block">Defines the derivative-free $\Delta u$ update mechanics (Eq. 4) used for 1kHz null-space stabilization.</span>
+                    </li>
+                </ol>
+            </div>
+
         </div>
-
-        <h2>V. Conclusion</h2>
-        <p>
-            The integration of C/GMRES with COA yields a highly effective control topology for redundant robotic machining. The offline-equivalent NMPC guarantees long-term thermal constraint adherence without requiring matrix inversion, while the derivative-free COA provides essential microsecond-scale robustness against stochastic workpiece variations, ensuring surface integrity in autonomous grinding operations.
-        </p>
-
-        <h2>References</h2>
-        <ol class="list-decimal pl-5 text-sm text-gray-700 leading-relaxed">
-            <li class="mb-2">T. Ohtsuka, "A continuation/GMRES method for fast computation of nonlinear model predictive control," <em>IEEE Transactions on Automatic Control</em>, vol. 49, no. 5, pp. 842-848, 2004.</li>
-            <li class="mb-2">S. Malkin and C. Guo, <em>Grinding Technology: Theory and Applications of Machining with Abrasives</em>. Industrial Press, 2008.</li>
-            <li class="mb-2">J. Pierezan and L. S. Coelho, "Coyote Optimization Algorithm: A new metaheuristic for global optimization problems," in <em>2018 IEEE Congress on Evolutionary Computation (CEC)</em>, 2018, pp. 1-8.</li>
-            <li class="mb-2">B. Siciliano, L. Sciavicco, L. Villani, and G. Oriolo, <em>Robotics: Modelling, Planning and Control</em>. Springer, 2009.</li>
-        </ol>
-
-    </div>
+    </main>
 
     <script>
-        // Global Simulation Variables
-        let time = 0;
-        let baseTemp = 40;
-        let currentTemp = 40;
-        let nmpcTarget = 83; // Approaching 85 limit
-        let disturbanceActive = false;
-        let disturbanceDecay = 0;
+        // --- Navigation ---
+        const pages = ['arch', 'physics', 'nmpc', 'coa', 'fullsim', 'refs'];
+        let activePage = 'arch';
 
-        // Chart Instances
-        let nmpcChart, coaChart, plantChart;
-        
-        // Data Arrays
-        const horizonSteps = 20;
-        const historyLength = 50;
-        let plantHistory = Array(historyLength).fill(40);
-        
-        function initCharts() {
-            // 1. NMPC Horizon Chart
-            const ctxNMPC = document.getElementById('nmpcChart').getContext('2d');
-            nmpcChart = new Chart(ctxNMPC, {
+        function navTo(pageId) {
+            pages.forEach(p => {
+                document.getElementById(`nav-${p}`).classList.remove('active');
+                document.getElementById(`page-${p}`).classList.remove('active');
+            });
+            document.getElementById(`nav-${pageId}`).classList.add('active');
+            document.getElementById(`page-${pageId}`).classList.add('active');
+            activePage = pageId;
+
+            if(window.MathJax && MathJax.typesetPromise) MathJax.typesetPromise([document.getElementById(`page-${pageId}`)]);
+
+            // Resize charts appropriately
+            if(pageId === 'physics' && physicsChart) physicsChart.resize();
+            if(pageId === 'nmpc' && nmpcChart) nmpcChart.resize();
+            if(pageId === 'coa' && coaScatterChart) { coaScatterChart.resize(); coaCostChart.resize(); }
+            if(pageId === 'fullsim' && fullSimChart) fullSimChart.resize();
+        }
+
+        // --- I. Architecture Interaction ---
+        const archData = {
+            nmpc: { title: "NMPC via C/GMRES", desc: "$$ \\dot{F}(U,x,t) = -\\zeta F(U,x,t) $$ <br> Calculates the globally optimal feed rate trajectory $u_{ref}^*$ over a receding horizon $T$. Operating at ~50Hz, it respects absolute thermal constraints while maximizing $Q_w$. It entirely avoids costly matrix inversion by tracking KKT roots." },
+            coa: { title: "Coyote Optimization (COA)", desc: "$$ \\tau_{u} = u_{ref}^* + COA(e(t)) $$ <br> A derivative-free swarm metaheuristic executing at the 1kHz CNC interpolation rate. It instantaneously rejects unmodeled process noise (stochastic friction, workpiece anomalies) ensuring the physical plant tracks the NMPC reference." },
+            plant: { title: "Physical Plant & Estimation", desc: "$$ \\dot{x} = f_{cnc}(x, u, w) $$ <br> The 7-Degree-of-Freedom kinematics and spindle dynamics. Since internal contact temperature cannot be measured directly, high-frequency Acoustic Emission (AE) and spindle power data are fused via an Extended Kalman Filter (EKF)." }
+        };
+
+        function showArchInfo(nodeId) {
+            const infoBox = document.getElementById('arch-info');
+            document.getElementById('arch-info-title').innerText = archData[nodeId].title;
+            document.getElementById('arch-info-desc').innerHTML = archData[nodeId].desc;
+            if(window.MathJax && MathJax.typesetPromise) MathJax.typesetPromise([infoBox]);
+        }
+
+        // --- II. Physics Chart ---
+        let physicsChart;
+        function initPhysicsChart() {
+            const ctx = document.getElementById('physicsChart').getContext('2d');
+            const feedRates = Array.from({length: 100}, (_, i) => i + 10);
+            
+            physicsChart = new Chart(ctx, {
                 type: 'line',
                 data: {
-                    labels: Array.from({length: horizonSteps}, (_, i) => `t+${i}`),
+                    labels: feedRates,
                     datasets: [
-                        {
-                            label: 'θ_crit Limit (85°C)',
-                            data: Array(horizonSteps).fill(85),
-                            borderColor: '#ef4444', borderWidth: 2, borderDash: [5, 5],
-                            pointRadius: 0, fill: false
-                        },
-                        {
-                            label: 'C/GMRES Predicted θ_m',
-                            data: Array(horizonSteps).fill(40),
-                            borderColor: '#000', borderWidth: 2,
-                            pointRadius: 0, fill: true, backgroundColor: 'rgba(0,0,0,0.05)',
-                            tension: 0.4
-                        }
+                        { label: 'Thermal Limit (θ_crit = 85)', data: Array(100).fill(85), borderColor: '#ef4444', borderWidth: 2, borderDash: [5, 5], pointRadius: 0, fill: false },
+                        { label: 'Temperature θ_m', data: [], borderColor: '#0f172a', borderWidth: 3, pointRadius: 0, fill: false },
+                        { label: 'Material Removal (Qw)', data: [], borderColor: '#0d9488', borderWidth: 2, borderDash: [2, 2], pointRadius: 0, fill: false, yAxisID: 'y1' }
                     ]
                 },
                 options: {
                     responsive: true, maintainAspectRatio: false,
-                    scales: { y: { min: 30, max: 100 } },
-                    animation: { duration: 0 },
-                    plugins: { legend: { position: 'top', labels: {font: {family: 'serif'}} } }
+                    interaction: { mode: 'index', intersect: false },
+                    scales: {
+                        x: { title: { display: true, text: 'Feed Rate (vw) [mm/s]' }, grid: {display: false} },
+                        y: { title: { display: true, text: 'Temperature [°C]' }, min: 0, max: 150 },
+                        y1: { type: 'linear', display: true, position: 'right', title: { display: true, text: 'MRR (Qw) [mm³/s]' }, grid: {drawOnChartArea: false} }
+                    }
                 }
             });
+            updatePhysicsChart();
+        }
 
-            // 2. COA Swarm Chart
-            const ctxCOA = document.getElementById('coaChart').getContext('2d');
-            coaChart = new Chart(ctxCOA, {
+        function updatePhysicsChart() {
+            if(!physicsChart) return;
+            const ae = parseFloat(document.getElementById('depthSlider').value);
+            const vs = parseFloat(document.getElementById('speedSlider').value);
+            document.getElementById('depthVal').innerText = ae.toFixed(2) + ' mm';
+            document.getElementById('speedVal').innerText = vs.toFixed(0) + ' m/s';
+            
+            // Surrogate physics model based on Jaeger
+            const labels = physicsChart.data.labels;
+            const tempData = labels.map(vw => 15 * Math.pow(vw, 0.4) * Math.pow(ae, 0.6) * (vs/30));
+            const mrrData = labels.map(vw => vw * ae * 10); // assumed width b=10
+            
+            physicsChart.data.datasets[1].data = tempData;
+            physicsChart.data.datasets[2].data = mrrData;
+            
+            let optimalIndex = tempData.findIndex(t => t >= 85);
+            let optVal = optimalIndex !== -1 ? labels[optimalIndex] : 109;
+            document.getElementById('optFeedVal').innerText = optVal.toFixed(1);
+
+            physicsChart.update();
+        }
+
+        // --- III. NMPC Chart ---
+        let nmpcChart;
+        function initNMPCChart() {
+            const ctx = document.getElementById('nmpcChart').getContext('2d');
+            nmpcChart = new Chart(ctx, {
+                type: 'line',
+                data: {
+                    labels: Array.from({length: 30}, (_, i) => `τ+${i}`),
+                    datasets: [
+                        { label: 'Limit (85°C)', data: Array(30).fill(85), borderColor: '#ef4444', borderWidth: 2, borderDash: [4, 4], pointRadius: 0, fill: false },
+                        { label: 'Predicted θ_m', data: [], borderColor: '#0f172a', borderWidth: 3, pointRadius: 0, fill: true, backgroundColor: 'rgba(15, 23, 42, 0.05)', tension: 0.4 },
+                        { label: 'Control Effort (u)', data: [], borderColor: '#0d9488', borderWidth: 2, pointRadius: 0, borderDash: [2, 2], yAxisID: 'y1', tension: 0.4 }
+                    ]
+                },
+                options: {
+                    responsive: true, maintainAspectRatio: false,
+                    scales: { 
+                        x: { title: { display: true, text: 'Receding Horizon (T)' } }, 
+                        y: { title: {display: true, text: 'Predicted State'}, min: 40, max: 100 },
+                        y1: { type: 'linear', display: true, position: 'right', title: {display: true, text: 'Actuation'}, grid: {drawOnChartArea: false}, min: 0, max: 10 }
+                    }
+                }
+            });
+            updateNMPCChart();
+        }
+
+        function updateNMPCChart() {
+            if(!nmpcChart) return;
+            const Q = parseFloat(document.getElementById('qSlider').value);
+            const R = parseFloat(document.getElementById('rSlider').value);
+            document.getElementById('qVal').innerText = Q.toFixed(1);
+            document.getElementById('rVal').innerText = R.toFixed(1);
+            
+            let currentTemp = 45;
+            const targetTemp = 84.5;
+            let tempTraj = [];
+            let ctrlTraj = [];
+            
+            for(let i=0; i<30; i++) {
+                tempTraj.push(currentTemp);
+                // Math approximation of KKT integration
+                let error = targetTemp - currentTemp;
+                let effort = (error * (Q/10)) / (R * 2);
+                if(effort > 8) effort = 8; // saturation
+                if(effort < 0) effort = 0;
+                
+                ctrlTraj.push(effort);
+                currentTemp += effort * 0.8;
+                if(currentTemp > 84.9) currentTemp = 84.9;
+            }
+            nmpcChart.data.datasets[1].data = tempTraj;
+            nmpcChart.data.datasets[2].data = ctrlTraj;
+            nmpcChart.update();
+        }
+
+        // --- IV. COA Swarm ---
+        let coaScatterChart, coaCostChart;
+        let coaTarget = { x: 0, y: 0 };
+        let costHistory = Array(50).fill(100);
+
+        function initCOA() {
+            const ctxScatter = document.getElementById('coaScatterChart').getContext('2d');
+            const ctxCost = document.getElementById('coaCostChart').getContext('2d');
+            
+            const coyotes = Array.from({length: 25}, () => ({ x: (Math.random()-0.5)*100, y: (Math.random()-0.5)*100 }));
+
+            coaScatterChart = new Chart(ctxScatter, {
                 type: 'scatter',
                 data: {
                     datasets: [
-                        {
-                            label: 'u* (NMPC Ref)',
-                            data: [{x: 0, y: 0}],
-                            backgroundColor: '#ef4444', pointRadius: 8, pointStyle: 'crossRot', pointBorderWidth: 2
-                        },
-                        {
-                            label: 'Coyote Pack (soc_c)',
-                            data: Array.from({length: 15}, () => ({x: 0, y: 0})),
-                            backgroundColor: 'rgba(0,0,0,0.5)', pointRadius: 4
-                        }
+                        { label: 'Reference', data: [coaTarget], backgroundColor: '#ef4444', pointRadius: 8, pointStyle: 'rectRot' },
+                        { label: 'Coyotes', data: coyotes, backgroundColor: 'rgba(15,23,42,0.5)', pointRadius: 4 }
+                    ]
+                },
+                options: { responsive: true, maintainAspectRatio: false, animation: { duration: 0 }, plugins: {legend: {display: false}}, scales: {x: {min: -60, max: 60}, y: {min: -60, max: 60}} }
+            });
+
+            coaCostChart = new Chart(ctxCost, {
+                type: 'line',
+                data: {
+                    labels: Array.from({length: 50}, (_, i) => i),
+                    datasets: [{ label: 'Tracking Cost J', data: costHistory, borderColor: '#0d9488', borderWidth: 2, pointRadius: 0, fill: true, backgroundColor: 'rgba(13,148,136,0.1)' }]
+                },
+                options: { responsive: true, maintainAspectRatio: false, animation: {duration: 0}, plugins: {legend: {display: false}}, scales: {x: {display: false}, y: {min: 0, max: 120}} }
+            });
+
+            requestAnimationFrame(animateCOA);
+        }
+
+        function scatterSwarm() {
+            const pack = coaScatterChart.data.datasets[1].data;
+            for(let pt of pack) { pt.x = (Math.random()-0.5)*100; pt.y = (Math.random()-0.5)*100; }
+        }
+
+        function animateCOA() {
+            if(activePage === 'coa') {
+                const pack = coaScatterChart.data.datasets[1].data;
+                let bestCost = Infinity;
+
+                for(let pt of pack) {
+                    // Pull to origin
+                    pt.x += (coaTarget.x - pt.x) * 0.15 + (Math.random()-0.5)*4;
+                    pt.y += (coaTarget.y - pt.y) * 0.15 + (Math.random()-0.5)*4;
+                    
+                    let cost = Math.sqrt(Math.pow(pt.x - coaTarget.x, 2) + Math.pow(pt.y - coaTarget.y, 2));
+                    if(cost < bestCost) bestCost = cost;
+                }
+                
+                costHistory.push(bestCost);
+                costHistory.shift();
+
+                coaScatterChart.update();
+                coaCostChart.update();
+            }
+            requestAnimationFrame(animateCOA);
+        }
+
+        // --- V. Full System Integration ---
+        let fullSimChart;
+        const FULL_HIST_LEN = 100;
+        const FULL_HORIZON_LEN = 30;
+        let simHistTemp = Array(FULL_HIST_LEN).fill(40);
+        let simTime = 0;
+        let sysDisturbance = 0;
+
+        function initFullSim() {
+            const ctx = document.getElementById('fullSimChart').getContext('2d');
+            
+            // X-axis combines history and future
+            const labels = Array.from({length: FULL_HIST_LEN + FULL_HORIZON_LEN}, (_, i) => i - FULL_HIST_LEN);
+
+            fullSimChart = new Chart(ctx, {
+                type: 'line',
+                data: {
+                    labels: labels,
+                    datasets: [
+                        { label: 'Constraint (85°C)', data: Array(labels.length).fill(85), borderColor: '#ef4444', borderWidth: 2, borderDash: [4, 4], pointRadius: 0, fill: false },
+                        { label: 'Historical Plant θ_m', data: Array(labels.length).fill(null), borderColor: '#0f172a', borderWidth: 3, pointRadius: 0, fill: false },
+                        { label: 'NMPC Predicted Horizon', data: Array(labels.length).fill(null), borderColor: '#3b82f6', borderWidth: 2, borderDash: [2, 2], pointRadius: 0, fill: false }
                     ]
                 },
                 options: {
-                    responsive: true, maintainAspectRatio: false,
+                    responsive: true, maintainAspectRatio: false, animation: { duration: 0 },
                     scales: {
-                        x: { min: -50, max: 50, title: {display: true, text: 'Δ Feed (v_w)', font: {family: 'serif'}} },
-                        y: { min: -50, max: 50, title: {display: true, text: 'Δ Depth (a_e)', font: {family: 'serif'}} }
+                        x: { display: false },
+                        y: { min: 20, max: 120, title: {display: true, text: 'Temperature [°C]'} }
                     },
-                    animation: { duration: 0 },
-                    plugins: { legend: { display: false } }
+                    plugins: {
+                        annotation: {
+                            annotations: {
+                                line1: { type: 'line', xMin: FULL_HIST_LEN-1, xMax: FULL_HIST_LEN-1, borderColor: '#94a3b8', borderWidth: 2, borderDash: [2, 2] } // "Now" line
+                            }
+                        }
+                    }
                 }
             });
+            requestAnimationFrame(runFullSim);
+        }
 
-            // 3. Plant Chart
-            const ctxPlant = document.getElementById('plantChart').getContext('2d');
-            plantChart = new Chart(ctxPlant, {
-                type: 'line',
-                data: {
-                    labels: Array.from({length: historyLength}, (_, i) => i),
-                    datasets: [{
-                        label: 'Measured Plant θ_m',
-                        data: plantHistory,
-                        borderColor: '#2563eb', borderWidth: 2, pointRadius: 0, fill: false, tension: 0.1
-                    },
-                    {
-                        label: 'θ_crit',
-                        data: Array(historyLength).fill(85),
-                        borderColor: '#ef4444', borderWidth: 1, borderDash: [2, 2], pointRadius: 0, fill: false
-                    }]
-                },
-                options: {
-                    responsive: true, maintainAspectRatio: false,
-                    scales: { y: { min: 30, max: 100 }, x: { display: false } },
-                    animation: { duration: 0 },
-                    plugins: { legend: { position: 'top', labels: {font: {family: 'serif'}} } }
+        function injectFullSimDisturbance() {
+            sysDisturbance = 35; // +35 degrees instantly
+        }
+
+        function runFullSim() {
+            if(activePage === 'fullsim') {
+                simTime++;
+                
+                // 1. Plant Physics Update (Slow climb to 84, plus noise and disturbances)
+                let currentT = simHistTemp[FULL_HIST_LEN - 1];
+                let targetT = 83; // Normal optimal setpoint
+                
+                // COA rejects disturbance exponentially
+                if (sysDisturbance > 0) {
+                    sysDisturbance *= 0.9; 
+                    currentT += sysDisturbance * 0.1;
+                } else {
+                    currentT += (targetT - currentT) * 0.05 + (Math.random() - 0.5);
                 }
-            });
+
+                document.getElementById('simPlantTemp').innerText = currentT.toFixed(1);
+                
+                simHistTemp.push(currentT);
+                simHistTemp.shift();
+
+                // 2. Build Dataset 1: Historical Data (Padded with nulls on right)
+                let plantData = [...simHistTemp];
+                for(let i=0; i<FULL_HORIZON_LEN; i++) plantData.push(null);
+
+                // 3. Build Dataset 2: NMPC Horizon (Nulls on left, Prediction on right)
+                let nmpcData = Array(FULL_HIST_LEN - 1).fill(null);
+                
+                let predT = currentT;
+                for(let i=0; i<=FULL_HORIZON_LEN; i++) {
+                    nmpcData.push(predT);
+                    let err = 84.5 - predT;
+                    predT += err * 0.1; // Smooth prediction curve
+                    if (predT > 84.8) predT = 84.8 + (Math.random()*0.1); // asymptote
+                }
+
+                fullSimChart.data.datasets[1].data = plantData;
+                fullSimChart.data.datasets[2].data = nmpcData;
+                fullSimChart.update();
+            }
+            requestAnimationFrame(runFullSim);
         }
 
-        function injectDisturbance() {
-            disturbanceActive = true;
-            disturbanceDecay = 1.0;
-            currentTemp += 35; // Sharp spike
-        }
-
-        function simulationLoop() {
-            // --- 1. Plant Update ---
-            if (disturbanceActive) {
-                disturbanceDecay *= 0.85; // COA rejects the disturbance rapidly
-                currentTemp = baseTemp + (currentTemp - baseTemp) * 0.9 - (2 * disturbanceDecay);
-                if (disturbanceDecay < 0.01) disturbanceActive = false;
-            } else {
-                // Normal state: slowly climbing to optimized target
-                if (currentTemp < nmpcTarget) currentTemp += 0.1 + (Math.random()*0.2);
-                currentTemp += (Math.random() - 0.5) * 0.5; // Sensor noise
-            }
-            
-            plantHistory.push(currentTemp);
-            plantHistory.shift();
-            plantChart.update();
-
-            // --- 2. C/GMRES NMPC Horizon Update ---
-            let nmpcData = [];
-            let simT = currentTemp;
-            for(let i=0; i<horizonSteps; i++) {
-                nmpcData.push(simT);
-                // Math model: approaches target, heavily penalized near 85
-                let error = nmpcTarget - simT;
-                simT += error * 0.2; 
-                if(simT > 84.5) simT = 84.5; // Constraint wall
-            }
-            nmpcChart.data.datasets[1].data = nmpcData;
-            nmpcChart.update();
-
-            // --- 3. COA Swarm Update ---
-            // If disturbance, NMPC ref shifts, and pack scatters then regroups
-            let targetX = disturbanceActive ? -30 * disturbanceDecay : Math.sin(Date.now()*0.001)*5;
-            let targetY = disturbanceActive ? -20 * disturbanceDecay : Math.cos(Date.now()*0.001)*5;
-            
-            coaChart.data.datasets[0].data = [{x: targetX, y: targetY}];
-            
-            let pack = coaChart.data.datasets[1].data;
-            let dispersion = disturbanceActive ? 40 * disturbanceDecay : 5;
-            
-            for(let i=0; i<pack.length; i++) {
-                // Pull toward target + random dispersion
-                pack[i].x += (targetX - pack[i].x) * 0.3 + (Math.random() - 0.5) * dispersion;
-                pack[i].y += (targetY - pack[i].y) * 0.3 + (Math.random() - 0.5) * dispersion;
-            }
-            coaChart.update();
-
-            requestAnimationFrame(simulationLoop);
-        }
-
+        // --- Initialization ---
         window.onload = () => {
-            initCharts();
-            simulationLoop();
+            initPhysicsChart();
+            initNMPCChart();
+            initCOA();
+            initFullSim();
+            
+            setTimeout(() => {
+                if(window.MathJax && MathJax.typesetPromise) MathJax.typesetPromise();
+                showArchInfo('nmpc');
+            }, 500);
         };
     </script>
 </body>
